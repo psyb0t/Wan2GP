@@ -18,6 +18,7 @@ from wan.utils import notification_sound
 from wan.configs import MAX_AREA_CONFIGS, WAN_CONFIGS, SUPPORTED_SIZES, VACE_SIZE_CONFIGS
 from wan.utils.utils import cache_video, convert_tensor_to_image, save_image
 from wan.modules.attention import get_attention_modes, get_supported_attention_modes
+from huggingface_hub import hf_hub_download, snapshot_download    
 import torch
 import gc
 import traceback
@@ -46,8 +47,8 @@ global_queue_ref = []
 AUTOSAVE_FILENAME = "queue.zip"
 PROMPT_VARS_MAX = 10
 
-target_mmgp_version = "3.5.0"
-WanGP_version = "6.5"
+target_mmgp_version = "3.5.1"
+WanGP_version = "6.51"
 settings_version = 2.1
 prompt_enhancer_image_caption_model, prompt_enhancer_image_caption_processor, prompt_enhancer_llm_model, prompt_enhancer_llm_tokenizer = None, None, None, None
 
@@ -2138,7 +2139,6 @@ def get_hunyuan_text_encoder_filename(text_encoder_quantization):
 
 
 def process_files_def(repoId, sourceFolderList, fileList):
-    from huggingface_hub import hf_hub_download, snapshot_download    
     targetRoot = "ckpts/" 
     for sourceFolder, files in zip(sourceFolderList,fileList ):
         if len(files)==0:
@@ -3553,11 +3553,11 @@ def edit_video(
         if repeat_no >= total_generation: break
         repeat_no +=1
         gen["repeat_no"] = repeat_no
-		
+        suffix =  "" if "_post" in video_source else "_post"
         if any_mmaudio:
             send_cmd("progress", [0, get_latest_status(state,"MMAudio Soundtrack Generation")])
             from postprocessing.mmaudio.mmaudio import video_to_audio
-            new_video_path = get_available_filename(save_path, video_source, "_post")
+            new_video_path = get_available_filename(save_path, video_source, suffix)
             video_to_audio(video_path, prompt = MMAudio_prompt, negative_prompt = MMAudio_neg_prompt, seed = seed, num_steps = 25, cfg_strength = 4.5, duration= frames_count /output_fps, video_save_path = new_video_path , persistent_models = server_config.get("mmaudio_enabled", 0) == 2, verboseLevel = verbose_level)
             configs["MMAudio_setting"] = MMAudio_setting
             configs["MMAudio_prompt"] = MMAudio_prompt
@@ -3566,7 +3566,7 @@ def edit_video(
             any_change = True
         elif tempAudioFileName != None:
             # combine audio file and new video file
-            new_video_path = get_available_filename(save_path, video_source, "_post")
+            new_video_path = get_available_filename(save_path, video_source, suffix)
             os.system('ffmpeg -v quiet -y -i "{}" -i "{}" -c copy "{}"'.format(video_path, tempAudioFileName, new_video_path))
         else:
             new_video_path = video_path
@@ -3757,6 +3757,8 @@ def generate_video(
                     loras_list_mult_choices_nums.append(mult)
         if len(loras_list_mult_choices_nums ) < len(activated_loras):
             loras_list_mult_choices_nums  += [1.0] * ( len(activated_loras) - len(loras_list_mult_choices_nums ) ) 
+        if len(loras_slists ) < len(activated_loras):
+            loras_slists  += [1.0] * ( len(activated_loras) - len(loras_slists ) ) 
         lora_dir = get_lora_dir(model_type)     
         loras_selected = [ os.path.join(lora_dir, lora) for lora in activated_loras]
 
@@ -4069,7 +4071,7 @@ def generate_video(
                             preprocess_type = process_map.get(process_letter, "vace")
                         else:
                             preprocess_type2 = process_map.get(process_letter, None)
-                    process_names = { "pose": "Open Pose", "depth": "Depth Mask", "scribble" : "Shapes", "flow" : "Flow Map", "gray" : "Gray Levels", "inpaint" : "Inpaint Mask", "U": "Identity Mask", "vace" : "Vace Data"}
+                    process_names = { "pose": "Open Pose", "depth": "Depth Mask", "scribble" : "Shapes", "flow" : "Flow Map", "gray" : "Gray Levels", "inpaint" : "Inpaint Mask", "identity": "Identity Mask", "vace" : "Vace Data"}
                     status_info = "Extracting " + process_names[preprocess_type]
                     extra_process_list = ([] if preprocess_type2==None else [preprocess_type2]) + ([] if process_outside_mask==None or process_outside_mask == preprocess_type else [process_outside_mask])
                     if len(extra_process_list) == 1:
@@ -4203,6 +4205,7 @@ def generate_video(
                     model_filename = model_filename,
                     model_type = base_model_type,
                     loras_slists = loras_slists,
+                    offloadobj = offloadobj,
                 )
             except Exception as e:
                 if temp_filename!= None and  os.path.isfile(temp_filename):
@@ -4314,10 +4317,11 @@ def generate_video(
 
                 time_flag = datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d-%Hh%Mm%Ss")
                 save_prompt = original_prompts[0]
+                from wan.utils.utils import truncate_for_filesystem
                 if os.name == 'nt':
-                    file_name = f"{time_flag}_seed{seed}_{sanitize_file_name(save_prompt[:50]).strip()}.mp4"
+                    file_name = f"{time_flag}_seed{seed}_{sanitize_file_name(truncate_for_filesystem(save_prompt,50)).strip()}.mp4"
                 else:
-                    file_name = f"{time_flag}_seed{seed}_{sanitize_file_name(save_prompt[:100]).strip()}.mp4"
+                    file_name = f"{time_flag}_seed{seed}_{sanitize_file_name(truncate_for_filesystem(save_prompt,100)).strip()}.mp4"
                 video_path = os.path.join(save_path, file_name)
                 any_mmaudio = MMAudio_setting != 0 and server_config.get("mmaudio_enabled", 0) != 0 and sample.shape[1] >=fps
                 if audio_guide != None or any_mmaudio :
@@ -7030,7 +7034,7 @@ def generate_configuration_tab(state, blocks, header, model_choice, prompt_enhan
                 )
 
                 save_path_choice = gr.Textbox(
-                    label="Output Folder for Generated Videos",
+                    label="Output Folder for Generated Videos (need to restart app to be taken into account)",
                     value=server_config.get("save_path", save_path)
                 )
 

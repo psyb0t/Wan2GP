@@ -150,16 +150,17 @@ LOGFORMAT = "[%(log_color)s%(levelname)-8s%(reset)s]: %(log_color)s%(message)s%(
 
 
 def setup_eval_logging(log_level: int = logging.INFO):
-    logging.root.setLevel(log_level)
-    # formatter = ColoredFormatter(LOGFORMAT)
-    formatter = None
-    stream = logging.StreamHandler()
-    stream.setLevel(log_level)
-    stream.setFormatter(formatter)
-    log = logging.getLogger()
-    log.setLevel(log_level)
-    log.addHandler(stream)
-
+    log = logging.getLogger(__name__)      
+    if not log.handlers:
+        formatter = None  # or your ColoredFormatter
+        stream = logging.StreamHandler()
+        stream.setLevel(log_level)
+        stream.setFormatter(formatter)
+        log.addHandler(stream)
+        log.setLevel(log_level)
+        log.propagate = False  # Prevent propagation to root logger
+    
+    return log
 
 _CLIP_SIZE = 384
 _CLIP_FPS = 8.0

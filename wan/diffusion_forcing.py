@@ -334,7 +334,7 @@ class DTT2V:
             self.model.compute_teacache_threshold(self.model.cache_start_step, time_steps_comb, self.model.cache_multiplier)
             del time_steps_comb
         else:
-            trans.enable_cache == None
+            self.model.enable_cache = None
         from mmgp import offload
         freqs = get_rotary_pos_embed(latents.shape[1 :], enable_RIFLEx= False) 
         kwrags = {

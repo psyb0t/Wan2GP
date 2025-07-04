@@ -69,6 +69,15 @@ def get_file_creation_date(file_path):
         stat = os.stat(file_path)
     return datetime.fromtimestamp(stat.st_birthtime if hasattr(stat, 'st_birthtime') else stat.st_mtime)
 
+def truncate_for_filesystem(s, max_bytes=255):
+    if len(s.encode('utf-8')) <= max_bytes: return s
+    l, r = 0, len(s)
+    while l < r:
+        m = (l + r + 1) // 2
+        if len(s[:m].encode('utf-8')) <= max_bytes: l = m
+        else: r = m - 1
+    return s[:l]
+
 def get_video_info(video_path):
     import cv2
     cap = cv2.VideoCapture(video_path)

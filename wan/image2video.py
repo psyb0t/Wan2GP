@@ -26,6 +26,7 @@ from .utils.fm_solvers import (FlowDPMSolverMultistepScheduler,
 from .utils.fm_solvers_unipc import FlowUniPCMultistepScheduler
 from wan.modules.posemb_layers import get_rotary_pos_embed
 from wan.utils.utils import resize_lanczos, calculate_new_dimensions
+from wan.utils.basic_flowmatch import FlowMatchScheduler
 
 def optimized_scale(positive_flat, negative_flat):
 
@@ -150,6 +151,7 @@ class WanI2V:
         audio_proj=None,
         audio_context_lens=None,
         model_filename = None,
+        offloadobj = None,
         **bbargs
     ):
         r"""
@@ -262,7 +264,7 @@ class WanI2V:
         clip_context = self.clip.visual([image_start[:, None, :, :]])
 
         from mmgp import offload
-        offload.last_offload_obj.unload_all()
+        offloadobj.unload_all()
         if any_end_frame:
             mean2 = 0
             enc= torch.concat([
